@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rezavá továrna — idle těžební hra</title>
+<meta name="description" content="Buduj pásy, generátory, smelter, polisher a crafteře, těž rudy a plň úkoly v idle továrně." />
+<style>
+  :root {
+    --bg: #0b0c0e;
+    --card: #16181c;
+    --border: #2a2e35;
+    --fg: #e8e2d4;
+    --muted: #9aa0a8;
+    --primary: #d9a441;
+    --secondary: #22262c;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); }
+  body {
+    font-family: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+    color: var(--fg);
+    user-select: none;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel {
+    background: rgba(22, 24, 28, 0.92);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    backdrop-filter: blur(6px);
+  }
+  #brand { position: absolute; left: 12px; top: 12px; padding: 8px 12px; pointer-events: none; }
+  #brand .t { font-size: 14px; font-weight: 700; letter-spacing: 3px; color: var(--primary); }
+  #brand .s { font-size: 10px; color: var(--muted); }
+  #right {
+    position: absolute; right: 12px; top: 12px; width: 288px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .box { padding: 10px 12px; }
+  .label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+  #money { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 24px; font-weight: 600; color: var(--primary); }
+  #invToggle {
+    width: 100%; display: flex; justify-content: space-between; align-items: center;
+    background: none; border: none; color: inherit; font: inherit; cursor: pointer; padding: 0;
+  }
+  #invList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .row {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: rgba(34, 38, 44, 0.7); border-radius: 8px; padding: 6px 8px;
+  }
+  .row-info { min-width: 0; }
+  .row-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-sub { font-size: 10px; color: var(--muted); }
+  .row-act { display: flex; align-items: center; gap: 6px; font-size: 13px; flex-shrink: 0; }
+  .btn {
+    background: var(--primary); color: #14100a; border: none; border-radius: 6px;
+    padding: 4px 8px; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer;
+  }
+  .btn:disabled { opacity: 0.3; cursor: default; }
+  #resList { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+  .res {
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(34, 38, 44, 0.7); border-radius: 8px; padding: 4px 8px; font-size: 12px;
+  }
+  .res-label { display: flex; align-items: center; gap: 6px; }
+  .dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.4); flex-shrink: 0;
+  }
+  .hint { font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+  .quest-mode { float: right; font-size: 10px; color: var(--muted); }
+  .quest-title { font-size: 12px; font-weight: 600; margin-top: 2px; }
+  .goal { margin-top: 6px; }
+  .goal-row { display: flex; justify-content: space-between; font-size: 11px; }
+  .bar { height: 4px; background: var(--secondary); border-radius: 999px; margin-top: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--primary); border-radius: 999px; transition: width 0.3s; }
+  .quest-reward { font-size: 10px; color: var(--muted); margin-top: 8px; }
+  .quest-reward b { color: var(--fg); }
+  .quest-done { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  #coords { padding: 8px 12px; font-size: 12px; color: var(--muted); }
+  #placement {
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    padding: 8px 16px; font-size: 12px; border-color: rgba(217,164,65,0.6);
+    pointer-events: none; display: none;
+  }
+  #placement b { color: var(--primary); }
+  #toast {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    padding: 8px 16px; font-size: 14px; pointer-events: none; display: none;
+    max-width: 90vw; text-align: center;
+  }
+  #controls {
+    position: absolute; bottom: 12px; left: 12px; padding: 8px 12px;
+    font-size: 11px; color: var(--muted); line-height: 1.7; pointer-events: none;
+  }
+  #controls b { color: var(--fg); }
+  #shop {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 440px; max-width: 92vw; padding: 16px; display: none;
+  }
+  #shop h2 { font-size: 18px; letter-spacing: 3px; display: inline; }
+  #shopMoney { float: right; font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--primary); }
+  #shop .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  #shopBody { margin-top: 12px; max-height: 55vh; overflow-y: auto; padding-right: 4px; }
+  .shop-group { margin-bottom: 12px; }
+  .shop-group-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .shop-group .row { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="brand" class="panel">
+  <div class="t">REZAVÁ TOVÁRNA</div>
+  <div class="s">idle těžební prototyp</div>
+</div>
+
+<div id="right">
+  <div class="panel box">
+    <div class="label">Peníze</div>
+    <div id="money">0</div>
+  </div>
+
+  <div class="panel box">
+    <button id="invToggle">
+      <span class="label">Inv — stroje</span>
+      <span id="invToggleArrow" style="font-size:12px;color:var(--muted)">▾</span>
+    </button>
+    <div id="invList"></div>
+  </div>
+
+  <div class="panel box">
+    <div class="label">Suroviny</div>
+    <div id="resList"></div>
+    <div class="hint">Prodat vše můžeš u obchodníka (−10, −10) nebo pásem.</div>
+  </div>
+
+  <div class="panel box">
+    <span class="label">Úkol</span>
+    <div id="questBody"></div>
+  </div>
+
+  <div id="coords" class="panel mono"></div>
+</div>
+
+<div id="placement" class="panel"></div>
+<div id="toast" class="panel"></div>
+
+<div id="controls" class="panel">
+  <div><b>WASD / šipky</b> pohyb · přejdi přes věc = sebrat</div>
+  <div><b>Obchod</b> (10, 10) · <b>Obchodník</b> (−10, −10)</div>
+</div>
+
+<div id="shop" class="panel">
+  <h2>OBCHOD</h2>
+  <span id="shopMoney"></span>
+  <p class="sub">Kup stroje do inventáře. Odejdi z pole pro zavření.</p>
+  <div id="shopBody"></div>
+</div>
+
+<script>
+var Z=48,k=[12,15,17,20,25],E=k[0],v={x:10,y:-10},A={x:-10,y:10},l=3;var I=1.4,d=5.2,ZF=8,B={iron:{name:"Železná ruda",short:"Ruda",color:"#b3835f",price:50},coal:{name:"Uhlí",short:"Uhlí",color:"#2b2b31",price:25},copper:{name:"Měděná ruda",short:"Měď",color:"#c9743a",price:60},silver:{name:"Stříbrná ruda",short:"Stříbro",color:"#c3ccd6",price:120},ingot:{name:"Iron ingot",short:"Ingot",color:"#e8963f",price:175},coal_ball:{name:"Coal balls",short:"Koule",color:"#54545e",price:45},rod:{name:"Iron rod",short:"Tyč",color:"#cfd6dd",price:250},iron_bar:{name:"Iron bars",short:"Bar",color:"#8f9aa6",price:300},copper_coil:{name:"Copper coil",short:"Cívka",color:"#e08a45",price:80},silver_board:{name:"Silver board",short:"Deska",color:"#7fb3a4",price:280},silver_wire:{name:"Silver wire",short:"Drát",color:"#dfe7ef",price:400},cpu:{name:"CPU",short:"CPU",color:"#8ad1ff",price:1200}},R={smelter:[{in:{coal:1,iron:2},out:"ingot",qty:1,time:10}],polisher:[{in:{coal:1},out:"coal_ball",qty:1,time:5},{in:{ingot:1},out:"rod",qty:1,time:5}],crafter:[{in:{copper:1},out:"copper_coil",qty:2,time:4},{in:{silver:1},out:"silver_board",qty:1,time:6},{in:{copper_coil:3,silver_board:1},out:"cpu",qty:1,time:12}],crafter2:[{in:{silver:1,copper:1},out:"silver_wire",qty:1,time:6},{in:{coal:3,iron:1},out:"iron_bar",qty:1,time:8}]},N={gen_iron:{name:"Generátor železa",price:1200,desc:"1× ruda za 3 s",group:"gens"},gen_coal:{name:"Generátor uhlí",price:850,desc:"1× uhlí za 3 s",group:"gens"},gen_copper:{name:"Měděné ložisko",price:0,desc:"těží samo 1× měď za 3 s",group:"gens"},gen_silver:{name:"Stříbrné ložisko",price:0,desc:"těží samo 1× stříbro za 3 s",group:"gens"},smelter:{name:"Smelter",price:2500,desc:"1 uhlí + 2 rudy → ingot (10 s)",group:"gens"},polisher:{name:"Polisher",price:3100,desc:"uhlí → koule, ingot → tyč (5 s)",group:"gens"},crafter:{name:"Crafter",price:4200,desc:"měď → 2 cívky · stříbro → deska · 3 cívky + deska → CPU",group:"gens"},crafter2:{name:"Crafter 2",price:3800,desc:"stříbro + měď → drát · 3 uhlí + ruda → bar",group:"gens"},belt:{name:"Pás 1×1",price:50,desc:"Věci veze rovně",group:"belts"},belt2:{name:"Pás 1×2",price:125,desc:"Dvojnásobně dlouhý",group:"belts"},belt_r:{name:"Zatáčka vpravo",price:150,desc:"Odbočí doprava",group:"belts"},belt_l:{name:"Zatáčka vlevo",price:150,desc:"Odbočí doleva",group:"belts"}},o={gen_iron:"iron",gen_coal:"coal",gen_copper:"copper",gen_silver:"silver"},p=["iron","coal","copper","silver","ingot","coal_ball","rod","iron_bar","copper_coil","silver_board","silver_wire","cpu"],e=["gen_iron","gen_coal","smelter","polisher","crafter","crafter2"],i=["belt","belt2","belt_r","belt_l"];var m=[{id:1,title:"Prodej 100 ingotů pásem",mode:"belt",goals:[{item:"ingot",qty:100}],reward:"Mapa 30×30",radius:k[1]},{id:2,title:"Prodej ručně 300 silver wires",mode:"manual",goals:[{item:"silver_wire",qty:300}],reward:"Mapa 35×35",radius:k[2]},{id:3,title:"Prodej pásem 250 CPU",mode:"belt",goals:[{item:"cpu",qty:250}],reward:"Mapa 40×40",radius:k[3]},{id:4,title:"Velká zakázka (pásem i ručně)",mode:"any",goals:[{item:"copper_coil",qty:100},{item:"cpu",qty:350},{item:"silver_board",qty:150},{item:"coal_ball",qty:1500}],reward:"Mapa 50×50",radius:k[4]}];var OF=[[1,0],[0,1],[-1,0],[0,-1]],q=(F)=>OF[F],_=(F,J)=>`${F},${J}`,QF=(F,J,W)=>Math.min(W,Math.max(J,F)),M=(F)=>F==="belt"||F==="belt2"||F==="belt_r"||F==="belt_l",s=(F)=>(F in o),XF=(F)=>F==="gen_copper"||F==="gen_silver",c=()=>{let F={};for(let J of p)F[J]=0;return F},jF="rust-factory-save-v2";class t{money=0;resources=c();inventory={gen_iron:1,gen_coal:0,gen_copper:0,gen_silver:0,smelter:0,polisher:0,crafter:0,crafter2:0,belt:0,belt2:0,belt_r:0,belt_l:0};machines=[];tiles=new Map;ground=[];player={x:0,y:0};keys=new Set;placement=null;hover=null;message="";messageUntil=0;time=0;onShopTile=!1;onMerchantTile=!1;radius=E;questIndex=0;soldBelt=c();soldManual=c();seq=1;gid=1;prevTile="";constructor(){if(this.load(),!this.machines.some((F)=>F.fixed))this.spawnDeposits();this.message="Máš 1 generátor železa zdarma — polož ho a rudu odnes k obchodníkovi (−10, −10)",this.messageUntil=9}notify(F){this.message=F,this.messageUntil=this.time+3.5}get mapMin(){return-this.radius}get mapMax(){return this.radius}spawnDeposits(){let F=["gen_copper","gen_copper","gen_silver","gen_silver"];for(let J of F)for(let W=0;W<200;W++){let j=15+Math.random()*5,V=Math.random()*Math.PI*2,X=Math.round(Math.cos(V)*j),Q=Math.round(Math.sin(V)*j);if(Math.max(Math.abs(X),Math.abs(Q))>25)continue;let z=Math.abs(X)>Math.abs(Q)?X>0?2:0:Q>0?3:1;if(this.tiles.has(_(X,Q)))continue;let[Y,U]=q(z);if(this.tiles.has(_(X+Y,Q+U)))continue;if(this.isSpecial(X,Q)||this.isSpecial(X+Y,Q+U))continue;if(this.machines.some(($)=>$.fixed&&Math.abs($.x-X)<3&&Math.abs($.y-Q)<3))continue;this.place(J,X,Q,z,!0);break}}inMap(F,J){return F>=this.mapMin&&F<=this.mapMax&&J>=this.mapMin&&J<=this.mapMax}isSpecial(F,J){return F===v.x&&J===v.y||F===A.x&&J===A.y}isFree(F,J){return this.inMap(F,J)&&!this.isSpecial(F,J)&&!this.tiles.has(_(F,J))}isPad(F,J){return this.machines.some((W)=>W.pad&&W.pad[0]===F&&W.pad[1]===J)}byId(F){return this.machines.find((J)=>J.uid===F)}machineAt(F,J){let W=this.tiles.get(_(F,J));return W?this.byId(W.uid):void 0}cellsFor(F,J,W,j){let[V,X]=q(j);if(F==="gen_iron"||F==="gen_coal")return{cells:[[J,W],[J+V,W+X]],pad:[J+2*V,W+2*X]};if(s(F)||R[F])return{cells:[[J,W]],pad:[J+V,W+X]};if(F==="belt2")return{cells:[[J,W],[J+V,W+X]],pad:null};return{cells:[[J,W]],pad:null}}canPlace(F,J,W,j){let{cells:V,pad:X}=this.cellsFor(F,J,W,j),Q=X?[...V,X]:V;if(!Q.every(([z,Y])=>this.isFree(z,Y)))return!1;if(M(F))return!0;return!Q.some(([z,Y])=>this.isPad(z,Y))}place(F,J,W,j,V=!1){if(!V&&!this.canPlace(F,J,W,j))return!1;let[X,Q]=q(j),z={uid:this.seq++,kind:F,x:J,y:W,dir:j,pad:null,fixed:V,item:null,progress:0,store:{},timer:0,ready:null,readyQty:0,genTimer:2},Y=(U,G,$)=>this.tiles.set(_(U,G),{uid:z.uid,role:$});if(F==="gen_iron"||F==="gen_coal")Y(J,W,"body"),Y(J+X,W+Q,"body"),z.pad=[J+2*X,W+2*Q];else if(s(F)||R[F])Y(J,W,"body"),z.pad=[J+X,W+Q];else if(F==="belt2")Y(J,W,"belt"),Y(J+X,W+Q,"belt_end");else Y(J,W,"belt");return this.machines.push(z),!0}removeAt(F,J){let W=this.tiles.get(_(F,J));if(!W)return!1;let j=this.byId(W.uid);if(!j)return!1;if(j.fixed)return this.notify("Ložisko nejde sundat"),!1;let{cells:V}=this.cellsFor(j.kind,j.x,j.y,j.dir);for(let[X,Q]of V)this.tiles.delete(_(X,Q));if(j.item)this.resources[j.item]++;if(j.ready)this.resources[j.ready]+=j.readyQty;for(let[X,Q]of Object.entries(j.store))this.resources[X]+=Q??0;return this.machines=this.machines.filter((X)=>X.uid!==j.uid),this.inventory[j.kind]++,this.notify(`Sundáno: ${N[j.kind].name}`),!0}buy(F){let J=N[F].price;if(J<=0||this.money<J)return!1;return this.money-=J,this.inventory[F]++,this.notify(`Koupeno: ${N[F].name}`),!0}startPlacement(F){if(this.inventory[F]>0)this.placement={kind:F,dir:this.placement?.dir??0}}rotate(){if(this.placement)this.placement.dir=(this.placement.dir+1)%4}cancelPlacement(){this.placement=null}tryPlace(){if(!this.placement||!this.hover)return;let{kind:F,dir:J}=this.placement,{x:W,y:j}=this.hover;if(this.place(F,W,j,J)){if(this.inventory[F]--,this.notify(`Postaveno: ${N[F].name}`),this.inventory[F]<=0)this.placement=null}else this.notify("Tady to nepůjde — místo je obsazené")}sellAll(){let F=0;for(let J of p){let W=this.resources[J];if(!W)continue;F+=W*B[J].price,this.soldManual[J]+=W,this.resources[J]=0}if(F>0)this.money+=F,this.notify(`Prodáno vše za ${F}`),this.checkQuest();else this.notify("Nemáš žádné suroviny k prodeji")}quest(){let F=m[this.questIndex];if(!F)return null;let J=(j)=>F.mode==="belt"?this.soldBelt[j]:F.mode==="manual"?this.soldManual[j]:this.soldBelt[j]+this.soldManual[j],W=F.goals.map((j)=>({item:j.item,qty:j.qty,have:Math.min(J(j.item),j.qty)}));return{index:this.questIndex,title:F.title,reward:F.reward,goals:W,mode:F.mode,done:W.every((j)=>j.have>=j.qty)}}checkQuest(){let F=this.quest();if(!F||!F.done)return;let J=m[this.questIndex];this.radius=J.radius,this.questIndex++,this.notify(`Úkol splněn: ${J.title} — odměna: ${J.reward}`)}update(F){this.time+=F;let J=0,W=0;if(this.keys.has("a")||this.keys.has("arrowleft"))J-=1;if(this.keys.has("d")||this.keys.has("arrowright"))J+=1;if(this.keys.has("w")||this.keys.has("arrowup"))W-=1;if(this.keys.has("s")||this.keys.has("arrowdown"))W+=1;let j=Math.hypot(J,W)||1;this.player.x=QF(this.player.x+J/j*d*F,this.mapMin-0.45,this.mapMax+0.45),this.player.y=QF(this.player.y+W/j*d*F,this.mapMin-0.45,this.mapMax+0.45);let V=Math.round(this.player.x),X=Math.round(this.player.y);this.onShopTile=V===v.x&&X===v.y,this.onMerchantTile=V===A.x&&X===A.y;let Q=_(V,X);if(Q!==this.prevTile){if(this.onShopTile)this.notify("Obchod — kup stroje v panelu vpravo");if(this.onMerchantTile)this.sellAll();this.prevTile=Q}for(let z=this.ground.length-1;z>=0;z--){let Y=this.ground[z];if(Math.abs(Y.x-this.player.x)<0.6&&Math.abs(Y.y-this.player.y)<0.6)this.resources[Y.item]+=Y.count,this.ground.splice(z,1)}for(let z of this.machines)this.updateMachine(z,F)}groundAt(F,J){return this.ground.find((W)=>W.x===F&&W.y===J)}dropAt(F,J,W){if(!this.inMap(F,J))return!1;let j=this.groundAt(F,J);if(!j)return this.ground.push({id:this.gid++,item:W,x:F,y:J,count:1}),!0;if(j.item===W&&j.count<ZF)return j.count++,!0;return!1}beltAtPad(F){let J=this.tiles.get(_(F[0],F[1]));if(!J)return null;let W=this.byId(J.uid);return W&&M(W.kind)?W:null}emitToPad(F,J){let W=F.pad,j=this.beltAtPad(W);if(j){if(j.item)return!1;return j.item=J,j.progress=0,!0}let V=this.machineAt(W[0],W[1]);if(V&&R[V.kind])return this.feed(V,J);if(V)return!1;return this.dropAt(W[0],W[1],J)}feed(F,J){let W=R[F.kind];if(!W)return!1;let j=0;for(let X of W)j=Math.max(j,X.in[J]??0);if(j===0)return!1;let V=F.store[J]??0;if(V>=j)return!1;return F.store[J]=V+1,!0}updateMachine(F,J){if(M(F.kind))return this.updateBelt(F,J);if(!this.inMap(F.x,F.y))return;if(s(F.kind)){if(F.genTimer-=J,F.genTimer<=0)if(this.emitToPad(F,o[F.kind]))F.genTimer=l;else F.genTimer=0.5;return}let W=R[F.kind];if(!W)return;if(F.timer>0){if(F.timer-=J,F.timer<=0)F.timer=0}else if(F.readyQty<=0)for(let j of W){if(!Object.entries(j.in).every(([X,Q])=>(F.store[X]??0)>=(Q??0)))continue;for(let[X,Q]of Object.entries(j.in))F.store[X]=(F.store[X]??0)-(Q??0);F.timer=j.time,F.ready=j.out,F.readyQty=j.qty;break}if(F.timer<=0&&F.readyQty>0&&F.ready){if(this.emitToPad(F,F.ready)){if(F.readyQty--,F.readyQty<=0)F.ready=null}}}updateBelt(F,J){if(!F.item)return;let W=F.kind==="belt2"?2:1;if(F.progress+=I*J,F.progress<W)return;let j=F.kind==="belt"?F.dir:F.kind==="belt_r"?(F.dir+1)%4:(F.dir+3)%4,V=F.kind==="belt2"?[F.x+q(F.dir)[0],F.y+q(F.dir)[1]]:[F.x,F.y],X=V[0]+q(j)[0],Q=V[1]+q(j)[1];if(this.handoff(F,X,Q))F.item=null,F.progress=0;else F.progress=W}handoff(F,J,W){let j=F.item;if(J===A.x&&W===A.y)return this.money+=B[j].price,this.soldBelt[j]++,this.notify(`Prodáno pásem: ${B[j].short} +${B[j].price}`),this.checkQuest(),!0;let V=this.tiles.get(_(J,W));if(!V)return this.dropAt(J,W,j);let X=this.byId(V.uid);if(!X)return!1;if(M(X.kind)){if(X.item)return!1;return X.item=j,X.progress=V.role==="belt_end"?1:0,!0}if(R[X.kind]&&V.role==="body")return this.feed(X,j);return!1}save(){if(typeof window>"u")return;let F={v:2,money:this.money,resources:this.resources,inventory:this.inventory,radius:this.radius,questIndex:this.questIndex,soldBelt:this.soldBelt,soldManual:this.soldManual,machines:this.machines.map((J)=>({k:J.kind,x:J.x,y:J.y,d:J.dir,f:J.fixed}))};try{localStorage.setItem(jF,JSON.stringify(F))}catch{}}load(){if(typeof window>"u")return;try{let F=localStorage.getItem(jF);if(!F)return;let J=JSON.parse(F);if(J?.v!==2)return;this.money=J.money??0,this.radius=J.radius??E,this.questIndex=J.questIndex??0,Object.assign(this.resources,J.resources??{}),Object.assign(this.inventory,J.inventory??{}),Object.assign(this.soldBelt,J.soldBelt??{}),Object.assign(this.soldManual,J.soldManual??{});for(let W of J.machines??[])this.place(W.k,W.x,W.y,W.d,!!W.f)}catch{}}hud(){return{money:Math.floor(this.money),resources:{...this.resources},inventory:{...this.inventory},px:Math.round(this.player.x),py:-Math.round(this.player.y),onShop:this.onShopTile,onMerchant:this.onMerchantTile,message:this.time<this.messageUntil?this.message:null,placement:this.placement?.kind??null,placementDir:this.placement?.dir??0,quest:this.quest(),mapSize:this.radius*2+1}}}var x=null,VF=-1;function wF(F,J){return(Math.imul(F+13,374761393)^Math.imul(J+7,668265263))>>>0}function PF(F){let J=F>>>0;return()=>{return J=Math.imul(J,1664525)+1013904223>>>0,J/4294967296}}function HF(F){let J=-F,W=F,j=document.createElement("canvas"),V=(W-J+1)*Z;j.width=V,j.height=V;let X=j.getContext("2d");for(let Q=J;Q<=W;Q++)for(let z=J;z<=W;z++){let Y=(z-J)*Z,U=(Q-J)*Z,G=wF(z,Q),$=PF(G),w=G%10<3;if(w)X.fillStyle=`hsl(220 4% ${30+$()*7}%)`;else X.fillStyle=`hsl(${14+$()*10} ${28+$()*12}% ${24+$()*8}%)`;X.fillRect(Y,U,Z,Z);for(let P=0;P<14;P++){let H=Y+$()*Z,u=U+$()*Z,b=1+$()*3;X.fillStyle=w?`rgba(255,255,255,${0.03+$()*0.05})`:$()>0.5?`rgba(140,70,32,${0.15+$()*0.25})`:`rgba(30,16,10,${0.2+$()*0.25})`,X.fillRect(H,u,b,b)}if(w&&$()>0.55)X.strokeStyle="rgba(150,75,35,0.35)",X.lineWidth=1.4,X.beginPath(),X.moveTo(Y+4+$()*12,U+4+$()*12),X.lineTo(Y+12+$()*24,U+18+$()*24),X.stroke();X.strokeStyle="rgba(0,0,0,0.38)",X.lineWidth=1,X.strokeRect(Y+0.5,U+0.5,Z-1,Z-1),X.fillStyle="rgba(0,0,0,0.45)",X.fillRect(Y+3,U+3,2,2),X.fillRect(Y+Z-5,U+3,2,2),X.fillRect(Y+3,U+Z-5,2,2),X.fillRect(Y+Z-5,U+Z-5,2,2)}X.fillStyle="rgba(255,255,255,0.35)",X.font="600 11px 'IBM Plex Mono', monospace",X.textAlign="center";for(let Q=J;Q<=W;Q+=4){let z=(Q-J)*Z+Z/2;X.fillText(String(Q),z,13),X.fillText(String(-Q),13,z+4)}return j}function zF(F,J,W){let j=F.createRadialGradient(-W*0.35,-W*0.4,W*0.1,0,0,W*1.15);return j.addColorStop(0,"rgba(255,255,255,0.45)"),j.addColorStop(0.45,J),j.addColorStop(1,"rgba(0,0,0,0.45)"),j}function L(F,J,W,j){F.fillStyle=zF(F,J,W),F.beginPath(),F.moveTo(-W,-W*0.25),F.lineTo(-W*0.45,-W),F.lineTo(W*0.5,-W*0.85),F.lineTo(W,W*0.15),F.lineTo(W*0.35,W),F.lineTo(-W*0.6,W*0.8),F.closePath(),F.fill(),F.stroke(),F.fillStyle=j,F.beginPath(),F.moveTo(-W*0.45,-W*0.5),F.lineTo(W*0.15,-W*0.6),F.lineTo(-W*0.05,W*0.1),F.closePath(),F.fill()}function FF(F,J,W,j){switch(F.save(),F.translate(W,j),F.strokeStyle="rgba(0,0,0,0.6)",F.lineWidth=1.4,F.lineJoin="round",J){case"iron":L(F,B.iron.color,9,"rgba(255,214,170,0.35)");break;case"coal":L(F,"#33333b",9,"rgba(140,150,175,0.3)");break;case"copper":L(F,B.copper.color,9,"rgba(255,210,150,0.4)");break;case"silver":L(F,B.silver.color,9,"rgba(255,255,255,0.55)");break;case"ingot":case"iron_bar":{let V=B[J].color;F.fillStyle=V,F.beginPath(),F.moveTo(-10,4),F.lineTo(-7,-4),F.lineTo(7,-4),F.lineTo(10,4),F.closePath(),F.fill(),F.stroke(),F.fillStyle="rgba(255,255,255,0.35)",F.fillRect(-6.5,-4,13,2.2);break}case"coal_ball":{let V=[[-4,2,5],[4,2,5],[0,-4,5]];for(let[X,Q,z]of V)F.save(),F.translate(X,Q),F.fillStyle=zF(F,B.coal_ball.color,z),F.beginPath(),F.arc(0,0,z,0,Math.PI*2),F.fill(),F.stroke(),F.restore();break}case"rod":F.rotate(Math.PI/7),F.fillStyle=B.rod.color,F.beginPath(),F.roundRect(-10,-3,20,6,3),F.fill(),F.stroke(),F.fillStyle="rgba(255,255,255,0.4)",F.fillRect(-8,-2,16,1.5);break;case"copper_coil":F.strokeStyle=B.copper_coil.color,F.lineWidth=2.6;for(let V=-1;V<=1;V++)F.beginPath(),F.ellipse(0,V*3.4,8,2.6,0,0,Math.PI*2),F.stroke();break;case"silver_board":F.fillStyle=B.silver_board.color,F.beginPath(),F.roundRect(-9,-7,18,14,2),F.fill(),F.stroke(),F.fillStyle="rgba(20,40,35,0.7)",F.fillRect(-5,-4,10,5),F.fillStyle="rgba(255,230,140,0.8)";for(let V=0;V<3;V++)F.fillRect(-6+V*5,3,3,2);break;case"silver_wire":F.strokeStyle=B.silver_wire.color,F.lineWidth=2.4,F.beginPath(),F.moveTo(-9,4),F.bezierCurveTo(-3,-8,3,8,9,-4),F.stroke();break;case"cpu":F.fillStyle="#26323d",F.beginPath(),F.roundRect(-8,-8,16,16,2),F.fill(),F.stroke(),F.fillStyle=B.cpu.color,F.fillRect(-4,-4,8,8),F.strokeStyle=B.cpu.color,F.lineWidth=1.6;for(let V=-1;V<=1;V++)F.beginPath(),F.moveTo(-11,V*5),F.lineTo(-8,V*5),F.moveTo(8,V*5),F.lineTo(11,V*5),F.moveTo(V*5,-11),F.lineTo(V*5,-8),F.moveTo(V*5,8),F.lineTo(V*5,11),F.stroke();break}F.restore()}function KF(F,J,W){let[j,V]=q(J.dir),X=J.x*Z,Q=J.y*Z,z=J.kind==="belt2"?2:1,Y=J.kind==="belt"?J.dir:J.kind==="belt_r"?(J.dir+1)%4:(J.dir+3)%4;if(F.save(),F.lineCap="butt",J.kind==="belt_r"||J.kind==="belt_l"){let P=q(Y)[0],H=q(Y)[1],u=X+(P-j)*Z*0.5,b=Q+(H-V)*Z*0.5,f=Math.atan2(-H,-P),S=Math.atan2(V,j),C=S-f;while(C>Math.PI)C-=Math.PI*2;while(C<-Math.PI)C+=Math.PI*2;F.beginPath(),F.rect(X-Z/2,Q-Z/2,Z,Z),F.clip(),F.strokeStyle="#232529",F.lineWidth=Z*0.58,F.beginPath(),F.arc(u,b,Z*0.5,f,S,C<0),F.stroke(),F.strokeStyle="#4a505a",F.lineWidth=2.5,F.beginPath(),F.arc(u,b,Z*0.5,f,S,C<0),F.stroke()}else{let P=X-j*Z*0.5,H=Q-V*Z*0.5,u=X+j*Z*(z-0.5),b=Q+V*Z*(z-0.5);F.strokeStyle="#232529",F.lineWidth=Z*0.58,F.beginPath(),F.moveTo(P,H),F.lineTo(u,b),F.stroke();let f=-V,S=j,C=16,qF=(W*I*Z%C+C)%C;F.strokeStyle="#4a505a",F.lineWidth=2.5;for(let T=qF;T<z*Z-4;T+=C){let g=P+j*T,r=H+V*T;F.beginPath(),F.moveTo(g-j*5+f*5,r-V*5+S*5),F.lineTo(g+j*4,r+V*4),F.lineTo(g-j*5-f*5,r-V*5-S*5),F.stroke()}}let U=X+q(Y)[0]*Z*0.42,G=Q+q(Y)[1]*Z*0.42,$=-q(Y)[1],w=q(Y)[0];F.fillStyle="#6a7078",F.beginPath(),F.moveTo(U+q(Y)[0]*6,G+q(Y)[1]*6),F.lineTo(U-q(Y)[0]*3+$*6,G-q(Y)[1]*3+w*6),F.lineTo(U-q(Y)[0]*3-$*6,G-q(Y)[1]*3-w*6),F.closePath(),F.fill(),F.restore()}var NF={smelter:"#a34a28",polisher:"#44708f",crafter:"#6c4a8f",crafter2:"#3f7a5e"};function CF(F,J,W){let j=J.x*Z,V=J.y*Z,X=J.kind==="gen_copper"?"copper":"silver";F.save(),F.translate(j,V),F.fillStyle="rgba(0,0,0,0.35)",F.beginPath(),F.ellipse(0,6,Z*0.4,Z*0.28,0,0,Math.PI*2),F.fill(),F.strokeStyle="rgba(0,0,0,0.6)",F.lineWidth=1.6;let Q=[[-8,4,8],[8,5,7],[0,-6,10]];for(let[Y,U,G]of Q)F.save(),F.translate(Y,U),L(F,B[X].color,G,"rgba(255,255,255,0.4)"),F.restore();let z=1-Math.max(0,Math.min(1,J.genTimer/l));F.strokeStyle="rgba(255,220,120,0.9)",F.lineWidth=3,F.beginPath(),F.arc(0,0,Z*0.44,-Math.PI/2,-Math.PI/2+z*Math.PI*2),F.stroke(),F.globalAlpha=0.5+0.3*Math.sin(W*3),F.strokeStyle=B[X].color,F.lineWidth=1.5,F.strokeRect(-Z/2+2,-Z/2+2,Z-4,Z-4),F.restore()}function DF(F,J,W){let[j,V]=q(J.dir);if(M(J.kind))KF(F,J,W);else if(XF(J.kind))CF(F,J,W);else if(J.kind==="gen_iron"||J.kind==="gen_coal"){let X=j!==0?Z*2:Z,Q=j!==0?Z:Z*2,z=Math.min(J.x*Z,J.x*Z+j*Z)-Z/2,Y=Math.min(J.y*Z,J.y*Z+V*Z)-Z/2;F.beginPath(),F.roundRect(z+3,Y+3,X-6,Q-6,7),F.fillStyle=J.kind==="gen_iron"?"#66707b":"#4b515a",F.fill(),F.strokeStyle="rgba(0,0,0,0.55)",F.lineWidth=2,F.stroke();let U=z+X/2,G=Y+Q/2;F.fillStyle="rgba(0,0,0,0.35)",F.beginPath(),F.arc(U,G,Z*0.28,0,Math.PI*2),F.fill(),F.fillStyle=J.kind==="gen_iron"?B.iron.color:B.coal.color,F.beginPath(),F.arc(U,G,Z*0.14,0,Math.PI*2),F.fill();let $=1-Math.max(0,Math.min(1,J.genTimer/l));F.strokeStyle="rgba(255,200,90,0.9)",F.lineWidth=3,F.beginPath(),F.arc(U,G,Z*0.38,-Math.PI/2,-Math.PI/2+$*Math.PI*2),F.stroke()}else{let X=J.x*Z,Q=J.y*Z;F.beginPath(),F.roundRect(X-Z/2+3,Q-Z/2+3,Z-6,Z-6,7),F.fillStyle=NF[J.kind]??"#5a606a",F.fill(),F.strokeStyle="rgba(0,0,0,0.55)",F.lineWidth=2,F.stroke();let z=X+j*Z*0.28,Y=Q+V*Z*0.28,U=J.kind==="smelter"?"255,140,66":J.kind==="polisher"?"140,220,255":"255,235,150";F.fillStyle=J.timer>0?`rgba(${U},${0.6+0.3*Math.sin(W*8)})`:"rgba(0,0,0,0.5)",F.beginPath(),F.arc(z,Y,Z*0.17,0,Math.PI*2),F.fill();let $=R[J.kind]?.[0]?.time??5,w=J.timer>0?1-J.timer/$:J.readyQty>0?1:0;if(w>0)F.strokeStyle="rgba(255,220,120,0.95)",F.lineWidth=3,F.beginPath(),F.arc(X,Q,Z*0.42,-Math.PI/2,-Math.PI/2+w*Math.PI*2),F.stroke();Object.entries(J.store).filter(([,H])=>(H??0)>0).slice(0,4).forEach(([H,u],b)=>{F.fillStyle=B[H].color;for(let f=0;f<Math.min(3,u??0);f++)F.fillRect(X-Z/2+6+f*5,Q-Z/2+6+b*5,3.5,3.5)})}if(J.pad){let[X,Q]=J.pad;F.save(),F.strokeStyle="rgba(217,197,138,0.85)",F.lineWidth=2,F.setLineDash([5,4]),F.strokeRect(X*Z-Z*0.38,Q*Z-Z*0.38,Z*0.76,Z*0.76),F.restore()}}function fF(F,J){let W=[{x:v.x,y:v.y,fill:"#7a6229",edge:"#e5c05a",label:"OBCHOD"},{x:A.x,y:A.y,fill:"#39543a",edge:"#7ed488",label:"PRODEJ"}];for(let j of W){let V=j.x*Z,X=j.y*Z;F.fillStyle=j.fill,F.beginPath(),F.roundRect(V-Z/2+2,X-Z/2+2,Z-4,Z-4,6),F.fill(),F.strokeStyle=j.edge,F.globalAlpha=0.55+0.35*Math.sin(J*3),F.lineWidth=2.5,F.stroke(),F.globalAlpha=1,F.fillStyle="rgba(10,11,13,0.85)",F.beginPath(),F.roundRect(V-26,X-Z/2-20,52,15,4),F.fill(),F.fillStyle=j.edge,F.font="700 9px 'Chakra Petch', sans-serif",F.textAlign="center",F.fillText(j.label,V,X-Z/2-9)}}function YF(F,J,W,j){if(!x||VF!==J.radius)x=HF(J.radius),VF=J.radius;F.fillStyle="#0b0c0e",F.fillRect(0,0,W,j);let V=W/2-J.player.x*Z,X=j/2-J.player.y*Z;if(F.save(),F.translate(V,X),F.drawImage(x,(J.mapMin-0.5)*Z,(J.mapMin-0.5)*Z),fF(F,J.time),J.hover)F.strokeStyle="rgba(255,255,255,0.22)",F.lineWidth=1.5,F.strokeRect(J.hover.x*Z-Z/2,J.hover.y*Z-Z/2,Z,Z);for(let Q of J.machines){if(!J.inMap(Q.x,Q.y))continue;DF(F,Q,J.time)}for(let Q of J.machines){if(!Q.item||!M(Q.kind))continue;let[z,Y]=q(Q.dir),U,G;if(Q.kind==="belt_r"||Q.kind==="belt_l")U=Q.x*Z,G=Q.y*Z;else U=Q.x*Z+z*(Q.progress-0.5)*Z,G=Q.y*Z+Y*(Q.progress-0.5)*Z;FF(F,Q.item,U,G)}for(let Q of J.ground){let z=Math.sin(J.time*3+Q.id)*1.5;F.fillStyle="rgba(0,0,0,0.3)",F.beginPath(),F.ellipse(Q.x*Z,Q.y*Z+9,8,3,0,0,Math.PI*2),F.fill();let Y=Math.min(3,Q.count);for(let U=Y-1;U>=0;U--)FF(F,Q.item,Q.x*Z+U*2,Q.y*Z+z-U*3);if(Q.count>1){F.font="700 10px 'IBM Plex Mono', monospace",F.textAlign="center";let U=`×${Q.count}`,G=F.measureText(U).width+8;F.fillStyle="rgba(10,11,13,0.85)",F.beginPath(),F.roundRect(Q.x*Z-G/2,Q.y*Z+11,G,13,4),F.fill(),F.fillStyle="#e8e2d4",F.fillText(U,Q.x*Z,Q.y*Z+21)}}for(let Q of J.machines){if(!Q.ready||!Q.pad)continue;let z=J.machineAt(Q.pad[0],Q.pad[1]);if(z?M(z.kind)&&!!z.item:J.ground.some((U)=>U.x===Q.pad[0]&&U.y===Q.pad[1]))FF(F,Q.ready,Q.x*Z,Q.y*Z-Z*0.55)}{let Q=J.player.x*Z,z=J.player.y*Z;F.fillStyle="rgba(0,0,0,0.35)",F.beginPath(),F.ellipse(Q,z+15,10,4,0,0,Math.PI*2),F.fill(),F.beginPath(),F.roundRect(Q-9,z-10,18,25,6),F.fillStyle="#cfc8ba",F.fill(),F.strokeStyle="rgba(0,0,0,0.5)",F.lineWidth=1.5,F.stroke(),F.fillStyle="#b23a2a",F.fillRect(Q-9,z+3,18,5),F.fillStyle="#e2bd94",F.beginPath(),F.arc(Q,z-16,7,0,Math.PI*2),F.fill(),F.fillStyle="#8f2f22",F.beginPath(),F.arc(Q,z-17,7.5,Math.PI,Math.PI*2),F.fill()}if(J.placement&&J.hover){let{kind:Q,dir:z}=J.placement,Y=J.canPlace(Q,J.hover.x,J.hover.y,z),{cells:U,pad:G}=J.cellsFor(Q,J.hover.x,J.hover.y,z);F.fillStyle=Y?"rgba(110,220,130,0.4)":"rgba(230,90,90,0.4)";for(let[$,w]of U)F.fillRect($*Z-Z/2+2,w*Z-Z/2+2,Z-4,Z-4);if(G)F.strokeStyle=Y?"rgba(110,220,130,0.8)":"rgba(230,90,90,0.8)",F.setLineDash([5,4]),F.strokeRect(G[0]*Z-Z*0.38,G[1]*Z-Z*0.38,Z*0.76,Z*0.76),F.setLineDash([])}if(J.hover){let Q=J.machineAt(J.hover.x,J.hover.y);if(Q){let z="";if(s(Q.kind))z=`${Math.max(0,Q.genTimer).toFixed(1)} s → ${B[o[Q.kind]].short}`;else if(R[Q.kind])if(Q.timer>0)z=`pracuje ${Q.timer.toFixed(1)} s`;else z=Object.entries(Q.store).filter(([,P])=>(P??0)>0).map(([P,H])=>`${B[P].short} ${H}`).join(" · ")||"čeká na vstup";else z=N[Q.kind].desc;let Y=N[Q.kind].name;F.font="600 11px 'Chakra Petch', sans-serif";let U=Math.max(F.measureText(Y).width,F.measureText(z).width)+16,G=Q.x*Z-U/2,$=Q.y*Z-Z/2-36;F.fillStyle="rgba(10,11,13,0.88)",F.beginPath(),F.roundRect(G,$,U,32,5),F.fill(),F.fillStyle="#e8e2d4",F.textAlign="center",F.fillText(Y,Q.x*Z,$+13),F.fillStyle="#9aa0a8",F.font="500 10px 'Chakra Petch', sans-serif",F.fillText(z,Q.x*Z,$+26)}}F.restore()}var D=document.getElementById("game"),UF=D.getContext("2d"),O=new t,JF=0,WF=0,a=1;function GF(){a=Math.min(window.devicePixelRatio||1,2),JF=D.clientWidth,WF=D.clientHeight,D.width=Math.round(JF*a),D.height=Math.round(WF*a)}GF();window.addEventListener("resize",GF);var $F=performance.now();function BF(F){let J=Math.min((F-$F)/1000,0.05);$F=F,O.update(J),UF.setTransform(a,0,0,a,0,0),YF(UF,O,JF,WF),requestAnimationFrame(BF)}requestAnimationFrame(BF);window.addEventListener("keydown",(F)=>{let J=F.key.toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(J))F.preventDefault();if(J==="r")O.rotate();else if(J==="escape")O.cancelPlacement();else O.keys.add(J)});window.addEventListener("keyup",(F)=>O.keys.delete(F.key.toLowerCase()));window.addEventListener("blur",()=>O.keys.clear());D.addEventListener("mousemove",(F)=>{let J=D.getBoundingClientRect(),W=(F.clientX-J.left-J.width/2)/Z+O.player.x,j=(F.clientY-J.top-J.height/2)/Z+O.player.y;O.hover={x:Math.round(W),y:Math.round(j)}});D.addEventListener("click",()=>{if(O.placement)O.tryPlace()});D.addEventListener("contextmenu",(F)=>{if(F.preventDefault(),O.hover)O.removeAt(O.hover.x,O.hover.y)});var K=(F)=>document.getElementById(F),AF=[...e,...i],n=!0;function h(F){return F.replace(/&/g,"&amp;").replace(/</g,"&lt;")}K("invToggle").addEventListener("click",()=>{n=!n,y()});function y(){let F=O.hud();K("money").textContent=String(F.money),K("coords").textContent=`X: ${F.px}  ·  Y: ${F.py}  ·  mapa ${F.mapSize}×${F.mapSize}`,K("invToggleArrow").textContent=n?"▾":"▸";let J=K("invList");if(J.style.display=n?"":"none",n)J.innerHTML=AF.map((z)=>{let Y=N[z],U=F.inventory[z];return`<div class="row">
+          <div class="row-info">
+            <div class="row-name">${h(Y.name)}</div>
+            <div class="row-sub">${Y.price} · ${h(Y.desc)}</div>
+          </div>
+          <div class="row-act">
+            <span class="mono">×${U}</span>
+            <button class="btn" data-place="${z}" ${U===0?"disabled":""}>Položit</button>
+          </div>
+        </div>`}).join(""),J.querySelectorAll("button[data-place]").forEach((z)=>{z.addEventListener("click",()=>{O.startPlacement(z.dataset.place),y()})});K("resList").innerHTML=p.map((z)=>`<div class="res">
+      <span class="res-label"><span class="dot" style="background:${B[z].color}"></span>${h(B[z].short)}</span>
+      <span class="mono">${F.resources[z]}</span>
+    </div>`).join("");let W=F.quest,j=K("questBody");if(W){let z=W.mode==="belt"?"pásem":W.mode==="manual"?"ručně":"pásem i ručně";j.innerHTML=`
+      <div class="quest-mode">${z}</div>
+      <div class="quest-title">${h(W.title)}</div>
+      ${W.goals.map((Y)=>`<div class="goal">
+            <div class="goal-row">
+              <span class="res-label"><span class="dot" style="background:${B[Y.item].color}"></span>${h(B[Y.item].short)}</span>
+              <span class="mono">${Y.have}/${Y.qty}</span>
+            </div>
+            <div class="bar"><div class="bar-fill" style="width:${Math.min(100,Y.have/Y.qty*100)}%"></div></div>
+          </div>`).join("")}
+      <div class="quest-reward">Odměna: <b>${h(W.reward)}</b></div>`}else j.innerHTML='<div class="quest-done">Všechny úkoly splněny \uD83C\uDF89</div>';let V=K("placement");if(F.placement)V.style.display="",V.innerHTML=`<b>${h(N[F.placement].name)}</b> — R otočit · klik položit · pravý klik sundat · Esc zrušit`,D.style.cursor="crosshair";else V.style.display="none",D.style.cursor="default";let X=K("toast");if(F.message)X.style.display="",X.textContent=F.message;else X.style.display="none";let Q=K("shop");if(F.onShop){Q.style.display="",K("shopMoney").textContent=String(F.money);let z=(Y)=>{return`<div class="shop-group">
+        <div class="shop-group-title">${Y==="belts"?"Pásy":"Generátory a stroje"}</div>
+        ${(Y==="belts"?i:e).map((G)=>{let $=N[G],w=F.money>=$.price;return`<div class="row">
+              <div class="row-info">
+                <div class="row-name">${h($.name)}</div>
+                <div class="row-sub">${h($.desc)}</div>
+              </div>
+              <div class="row-act">
+                <span class="mono">${$.price}</span>
+                <button class="btn" data-buy="${G}" ${w?"":"disabled"}>Koupit</button>
+              </div>
+            </div>`}).join("")}
+      </div>`};K("shopBody").innerHTML=z("belts")+z("gens"),K("shopBody").querySelectorAll("button[data-buy]").forEach((Y)=>{Y.addEventListener("click",()=>{O.buy(Y.dataset.buy),y()})})}else Q.style.display="none"}setInterval(y,100);y();setInterval(()=>O.save(),3000);window.addEventListener("beforeunload",()=>O.save());
+
+</script>
+</body>
+</html>
